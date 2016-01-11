@@ -1,0 +1,14 @@
+{
+  "name": "purescript-observable",
+  "scripts": {
+    "compile": "pulp --before \"babel --presets es2015,stage-2 -d src ffi\" build",
+    "test": "pulp --before \"babel --presets es2015,stage-2 -d src ffi\" test",
+    "watch": "supervisor -w src,test,ffi,bower_components -e purs,js -n exit -x npm -- run test"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.10.1",
+    "babel-preset-es2015": "^6.9.0",
+    "babel-preset-stage-2": "^6.11.0",
+    "supervisor": "^0.11.0"
+  }
+}

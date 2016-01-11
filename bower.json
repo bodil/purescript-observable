@@ -1,0 +1,31 @@
+{
+  "name": "purescript-observable",
+  "version": "0.0.0",
+  "license": "LGPL-3.0+",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/bodil/purescript-observable.git"
+  },
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-exceptions": "~1.0.0",
+    "purescript-prelude": "~1.0.1",
+    "purescript-foldable-traversable": "^1.0.0",
+    "purescript-monoid": "^1.0.0",
+    "purescript-control": "^1.0.0",
+    "purescript-eff": "^1.0.0",
+    "purescript-filterable": "^0.1.1",
+    "purescript-transformers": "^1.0.0",
+    "purescript-st": "^1.0.0",
+    "purescript-lists": "^1.0.1"
+  },
+  "devDependencies": {
+    "purescript-test-unit": "~7.0.0",
+    "purescript-refs": "~1.0.0"
+  }
+}
