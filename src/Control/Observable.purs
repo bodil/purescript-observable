@@ -18,6 +18,7 @@ module Control.Observable
   , fold
   , foldl
   , foldr
+  , foldp
   , scan
   ) where
 
@@ -138,6 +139,10 @@ unwrap o = observable \sink -> do
 
 
 
+-- | Merge two `Observable`s together, so that the resulting `Observable`
+-- | will yield all values from both source `Observable`s, throw an error
+-- | if either of the sources throw an error, and complete once both
+-- | sources complete.
 merge :: forall a. Observable a -> Observable a -> Observable a
 merge o1 o2 = pureObservable \sink -> do
   closed <- newSTRef 0
@@ -168,33 +173,62 @@ partitionMap f o =
 
 
 
+-- | Given a function which maps a value of type `a` to some `Monoid`,
+-- | `foldMap` creates an `Observable` which will do nothing until the
+-- | source `Observable` completes, then yield the result of adding up
+-- | all the values produced by the source, mapped through the function.
+-- | It completes immediately after yielding that value.
 foldMap :: forall a m. Monoid m => (a -> m) -> Observable a -> Observable m
-foldMap f o = unsafePerformEff $ runST do
-  ref <- newSTRef mempty
+foldMap f = foldl (\acc next -> append acc (f next)) mempty
+
+-- | Given an `Observable` of some `Monoid`, create an `Observable` which
+-- | collects and adds together all the values yielded by the source
+-- | `Observable`, then, as soon as the source completes, yields the
+-- | collected result.
+fold :: forall m. Monoid m => Observable m -> Observable m
+fold = foldl append mempty
+
+-- | Perform a left fold over an `Observable`, yielding the result
+-- | once the input `Observable` completes.
+foldl :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
+foldl f i o = unsafePerformEff $ runST do
+  acc <- newSTRef i
   observable \sink -> do
-    let next v = void $ modifySTRef ref (flip append (f v))
+    let next v = void $ modifySTRef acc (flip f v)
         done = do
-          readSTRef ref >>= sink.next
+          readSTRef acc >>= sink.next
           sink.complete
     sub <- observe next sink.error done o
     unsub1 sub
 
-fold :: forall m. Monoid m => Observable m -> Observable m
-fold = foldMap id
-
-foldl :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
-foldl f i o = Foldable.foldl f i <$> foldMap List.singleton o
-
+-- | Perform a right fold over an `Observable`, yielding the result
+-- | once the input `Observable` completes.
+-- |
+-- | Note that this operation needs to keep every value from the input
+-- | in memory until it completes, so use with caution.
 foldr :: forall a b. (a -> b -> b) -> b -> Observable a -> Observable b
 foldr f i o = Foldable.foldr f i <$> foldMap List.singleton o
 
-scan :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
-scan f i o = unsafePerformEff $ runST do
+-- | Perform an operation like a left fold over the input `Observable`,
+-- | but instead of waiting until the input completes to yield the
+-- | result, it yields each intermediate value as it happens.
+-- |
+-- | This is basically like `map`, except that you get the previous
+-- | output value passed into your mapping function as well as the
+-- | input value. This is great for evolving state: if the input
+-- | `Observable` contains actions, the scanning function gets your
+-- | previous state and an action as inputs, and returns the new state.
+foldp :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
+foldp f i o = unsafePerformEff $ runST do
   ref <- newSTRef i
   observable \sink -> do
     let next v = modifySTRef ref (flip f v) >>= sink.next
     sub <- observe next sink.error sink.complete o
     unsub1 sub
+
+-- | An alias for `foldp` to make RxJS users feel at home.
+scan :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
+scan = foldp
 
 
 
