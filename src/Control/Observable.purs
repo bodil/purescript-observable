@@ -88,8 +88,8 @@ foreign import subscribe :: forall e a. Observer e a -> Observable a -> EffO e (
 observe :: forall e a. (a -> EffO e Unit) -> (Error -> EffO e Unit) -> (EffO e Unit) -> Observable a -> EffO e (Subscription e)
 observe next error complete = subscribe { next, error, complete }
 
-pureObservable :: forall e a. SubscriberFunction e a -> Observable a
-pureObservable = observable >>> unsafePerformEff
+unsafeObservable :: forall e a. SubscriberFunction e a -> Observable a
+unsafeObservable = observable >>> unsafePerformEff
 
 
 
@@ -112,12 +112,12 @@ foreign import empty :: forall a. Observable a
 
 -- | An observable which never yields any values and never completes.
 never :: forall a. Observable a
-never = pureObservable \sink -> noUnsub
+never = unsafeObservable \sink -> noUnsub
 
 -- | Make an observable which only yields the provided value, then immediately
 -- | closes.
 singleton :: forall a. a -> Observable a
-singleton v = pureObservable \sink -> do
+singleton v = unsafeObservable \sink -> do
   sink.next v
   sink.complete
   noUnsub
@@ -125,7 +125,7 @@ singleton v = pureObservable \sink -> do
 -- | Convert any `Foldable` into an observable. It will yield each value from
 -- | the `Foldable` immediately, then complete.
 fromFoldable :: forall a f. Foldable f => f a -> Observable a
-fromFoldable f = pureObservable \sink -> do
+fromFoldable f = unsafeObservable \sink -> do
   traverse_ (sink.next) f
   sink.complete
   noUnsub
@@ -144,7 +144,7 @@ unwrap o = observable \sink -> do
 -- | if either of the sources throw an error, and complete once both
 -- | sources complete.
 merge :: forall a. Observable a -> Observable a -> Observable a
-merge o1 o2 = pureObservable \sink -> do
+merge o1 o2 = unsafeObservable \sink -> do
   closed <- newSTRef 0
   subs <- newSTRef []
   let unsub = readSTRef subs >>= traverse_ _.unsubscribe
@@ -158,7 +158,7 @@ merge o1 o2 = pureObservable \sink -> do
   unsub2 sub1 sub2
 
 filterMap :: forall a b. (a -> Maybe b) -> Observable a -> Observable b
-filterMap f o = pureObservable \sink -> do
+filterMap f o = unsafeObservable \sink -> do
   let yield = f >>> maybe (pure unit) sink.next
   sub <- observe yield sink.error sink.complete o
   unsub1 sub
@@ -233,11 +233,11 @@ scan = foldp
 
 
 instance functorObservable :: Functor Observable where
-  map f o = pureObservable \sink ->
+  map f o = unsafeObservable \sink ->
     observe (\v -> sink.next (f v)) sink.error sink.complete o >>= unsub1
 
 instance bindObservable :: Bind Observable where
-  bind o f = pureObservable \sink -> do
+  bind o f = unsafeObservable \sink -> do
     active <- newSTRef 1
     subs <- newSTRef []
     let unsub = readSTRef subs >>= traverse_ _.unsubscribe
@@ -280,9 +280,9 @@ instance filterableObservable :: Filterable Observable where
   filter f o = filterDefault f o
 
 instance monadErrorObservable :: MonadError Error Observable where
-  throwError e = pureObservable \sink -> sink.error e *> noUnsub
+  throwError e = unsafeObservable \sink -> sink.error e *> noUnsub
 
-  catchError o f = pureObservable \sink -> do
+  catchError o f = unsafeObservable \sink -> do
     subs <- newSTRef []
     let unsub = do
           readSTRef subs >>= traverse_ _.unsubscribe
