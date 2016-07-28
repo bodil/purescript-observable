@@ -150,7 +150,7 @@ singleton v = unsafeObservable \sink -> do
 
 -- | Convert any `Foldable` into an observable. It will yield each value from
 -- | the `Foldable` immediately, then complete.
-fromFoldable :: forall a f. Foldable f => f a -> Observable a
+fromFoldable :: forall f. Foldable f => f ~> Observable
 fromFoldable f = unsafeObservable \sink -> do
   traverse_ (sink.next) f
   sink.complete
