@@ -9,6 +9,8 @@ module Control.Observable
   , subscribe
   , observe
   , noUnsub
+  , unsub1
+  , unsub2
   , empty
   , never
   , singleton
@@ -96,12 +98,36 @@ unsafeObservable = observable >>> unsafePerformEff
 -- | If your observable doesn't need to free any resources on unsubscribe,
 -- | just call `noUnsub` at the end of your subscriber function. It will return
 -- | a subscription with a no-op unsubscribe function.
+-- |
+-- | Example:
+-- |
+-- |     -- this is how the `never` function is implemented:
+-- |     subscriberFn sink = noUnsub
 noUnsub :: forall e. EffO e (Subscription e)
 noUnsub = pure {unsubscribe: pure unit}
 
+-- | If the only resource your subscriber function allocates is a subscription
+-- | to another `Observable`, this function will return a `Subscription` which
+-- | unsubscribes from that `Observable` for you.
+-- |
+-- | Example:
+-- |
+-- |     subscriberFn sink = do
+-- |       sub <- subscribe next error complete inputObs
+-- |       unsub1 sub
 unsub1 :: forall e. Subscription e -> EffO e (Subscription e)
 unsub1 sub = pure {unsubscribe: sub.unsubscribe}
 
+-- | If your subscriber function sets up two subscriptions to other
+-- | `Observable`s, this function will return a `Subscription` which
+-- | unsubscribes from both `Observable`s for you.
+-- |
+-- | Example:
+-- |
+-- |     subscriberFn sink = do
+-- |       sub1 <- subscribe next error complete inputObs1
+-- |       sub2 <- subscribe next error complete inputObs2
+-- |       unsub2 sub1 sub2
 unsub2 :: forall e. Subscription e -> Subscription e -> EffO e (Subscription e)
 unsub2 sub1 sub2 = pure {unsubscribe: sub1.unsubscribe *> sub2.unsubscribe}
 
