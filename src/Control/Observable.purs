@@ -25,21 +25,21 @@ module Control.Observable
   ) where
 
 import Prelude
+import Data.Foldable as Foldable
+import Data.List as List
 import Control.Alt (class Alt)
 import Control.Alternative (class Alternative)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Eff.Unsafe (unsafePerformEff)
 import Control.Monad.Error.Class (class MonadError)
-import Control.Monad.ST (writeSTRef, runST, modifySTRef, readSTRef, newSTRef)
+import Control.Monad.ST (ST, writeSTRef, runST, modifySTRef, readSTRef, newSTRef)
 import Control.MonadPlus (class MonadPlus)
 import Control.MonadZero (class MonadZero)
 import Control.Plus (class Plus)
 import Data.Either (either, Either)
 import Data.Filterable (filterDefault, partitionDefault, class Filterable)
-import Data.Foldable as Foldable
 import Data.Foldable (traverse_, class Foldable)
-import Data.List as List
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
 
@@ -90,7 +90,7 @@ foreign import subscribe :: forall e a. Observer e a -> Observable a -> EffO e (
 observe :: forall e a. (a -> EffO e Unit) -> (Error -> EffO e Unit) -> (EffO e Unit) -> Observable a -> EffO e (Subscription e)
 observe next error complete = subscribe { next, error, complete }
 
-unsafeObservable :: forall e a. SubscriberFunction e a -> Observable a
+unsafeObservable :: forall a s. SubscriberFunction (st :: ST s) a -> Observable a
 unsafeObservable = observable >>> unsafePerformEff
 
 
