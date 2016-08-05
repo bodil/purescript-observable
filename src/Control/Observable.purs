@@ -22,6 +22,7 @@ module Control.Observable
   , foldr
   , foldp
   , scan
+  , concat
   ) where
 
 import Prelude
@@ -255,6 +256,21 @@ foldp f i o = unsafePerformEff $ runST do
 -- | An alias for `foldp` to make RxJS users feel at home.
 scan :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
 scan = foldp
+
+
+
+-- | Combine two observables by yielding values only from the first until
+-- | it completes, then yielding values from the second.
+concat :: forall a. Observable a -> Observable a -> Observable a
+concat a b = unsafeObservable \sink -> do
+  active <- newSTRef Nothing
+  let unsub = readSTRef active >>= maybe (pure unit) _.unsubscribe
+  let nextObs = do
+        unsub
+        observe sink.next sink.error sink.complete b >>= Just >>> writeSTRef active
+        pure unit
+  observe sink.next sink.error nextObs a >>= Just >>> writeSTRef active
+  pure {unsubscribe: unsub}
 
 
 

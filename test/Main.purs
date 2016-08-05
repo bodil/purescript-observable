@@ -11,7 +11,7 @@ import Control.Monad.Eff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (REF, newRef, readRef, modifyRef)
 import Control.Monad.Error.Class (catchError, throwError)
-import Control.Observable (foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
+import Control.Observable (concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
 import Data.Filterable (partition, filter)
 import Data.Monoid (mempty, class Monoid)
@@ -98,3 +98,7 @@ main = runTest do
         fromFoldable ["hell", "o ", "world"]
     test "foldp" do
       expect [1,3,6] $ foldp (\acc next -> acc + next) 0 $ fromFoldable [1,2,3]
+
+  suite "extras" do
+    test "concat" do
+      expect [1,2,3,4,5,6] $ concat (fromFoldable [1,2,3]) (fromFoldable [4,5,6])
