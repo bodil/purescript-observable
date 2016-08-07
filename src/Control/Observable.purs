@@ -135,7 +135,10 @@ unsub2 sub1 sub2 = pure {unsubscribe: sub1.unsubscribe *> sub2.unsubscribe}
 
 
 -- | An observable which completes immediately without yielding any values.
-foreign import empty :: forall a. Observable a
+empty :: forall a. Observable a
+empty = unsafeObservable \sink -> do
+  sink.complete
+  noUnsub
 
 -- | An observable which never yields any values and never completes.
 never :: forall a. Observable a
@@ -174,7 +177,7 @@ merge :: forall a. Observable a -> Observable a -> Observable a
 merge o1 o2 = unsafeObservable \sink -> do
   closed <- newSTRef 0
   subs <- newSTRef []
-  let unsub = readSTRef subs >>= traverse_ _.unsubscribe
+  let unsub = readSTRef subs >>= traverse_ \s -> s.unsubscribe
       done = do
         c <- modifySTRef closed (_ + 1)
         if c >= 2 then unsub *> sink.complete else pure unit
@@ -274,26 +277,16 @@ concat a b = unsafeObservable \sink -> do
 
 
 
+foreign import _bind :: forall a b. Observable a -> (a -> Observable b) -> Observable b
+
+
+
 instance functorObservable :: Functor Observable where
   map f o = unsafeObservable \sink ->
     observe (\v -> sink.next (f v)) sink.error sink.complete o >>= unsub1
 
 instance bindObservable :: Bind Observable where
-  bind o f = unsafeObservable \sink -> do
-    active <- newSTRef 1
-    subs <- newSTRef []
-    let unsub = readSTRef subs >>= traverse_ _.unsubscribe
-        closed = do
-          c <- modifySTRef active (_ - 1)
-          if c < 1 then unsub *> sink.complete else pure unit
-        error e = unsub *> sink.error e
-        next v = do
-          sub1 <- observe sink.next error closed (f v)
-          modifySTRef subs (append [sub1])
-          void $ modifySTRef active (_ + 1)
-    sub <- observe next error closed o
-    modifySTRef subs (append [sub])
-    pure {unsubscribe: unsub}
+  bind = _bind
 
 instance applyObservable :: Apply Observable where
   apply = ap

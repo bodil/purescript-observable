@@ -1,138 +1,508 @@
 // module Control.Observable
 
-const scheduler = {
-  queue: [],
-  scheduled: false,
-  next: typeof global !== "undefined" && typeof process !== "undefined" ? global.setImmediate || process.nextTick : (f) => setTimeout(f, 0)
-};
+/// Here follows an inline embedding of the zen-observable package,
+/// which is Copyright (c) 2015 zenparsing (Kevin Smith) and licensed
+/// under the MIT licence.
+///
+/// It is, essentially, the reference implementation for ECMAScript
+/// observables.
+///
+/// It can be found at https://github.com/zenparsing/zen-observable
+///
+/// Note that I've removed all the extraneous methods on `Observable`
+/// (the ones which are absent from the current proposal spec) with
+/// the exception of `flatMap`, which I've kept on the assumption
+/// that it's considerably more performant than the PS equivalent.
 
-function runScheduler() {
-  const queue = scheduler.queue;
-  scheduler.queue = [];
-  scheduler.scheduled = false;
-  queue.forEach((f) => f());
+// === Symbol Support ===
+
+function hasSymbol(name) {
+
+  return typeof Symbol === "function" && Boolean(Symbol[name]);
 }
 
-function schedule(f) {
-  scheduler.queue.push(f);
-  if (!scheduler.scheduled) {
-    scheduler.scheduled = true;
-    scheduler.next(runScheduler);
-  }
+function getSymbol(name) {
+
+  return hasSymbol(name) ? Symbol[name] : "@@" + name;
 }
 
-class Observable {
-  constructor(subscriber) {
-    this.observers = {};
-    this.count = 0;
-    this.uid = 0;
-    this.subscriber = subscriber;
-    this.sinkSubscription = null;
-    this.complete = false;
-    this.failed = null;
-    this.sink = {
-      next: (v) => {
-        if (this.complete) {
-          throw new Error("cannot feed values into a closed Observable");
-        } else {
-          this.forEachObserver((o) => schedule(() => o.next && o.next(v)));
-        }
-      },
-      error: (e) => {
-        if (this.complete) {
-          throw e;
-        }
-        this.forEachObserver((o) => schedule(() => o.error && o.error(e)));
-        this.failed = e;
-        this.close();
-      },
-      complete: (v) => {
-        if (this.complete) {
-          throw new Error("cannot complete an already closed Observable");
-        }
-        this.forEachObserver((o) => schedule(() => o.complete && o.complete(v)));
-        this.close();
-      }
-    };
+// === Abstract Operations ===
+
+function getMethod(obj, key) {
+
+  let value = obj[key];
+
+  if (value == null)
+    return undefined;
+
+  if (typeof value !== "function")
+    throw new TypeError(value + " is not a function");
+
+  return value;
+}
+
+function getSpecies(ctor) {
+
+  let symbol = getSymbol("species");
+  return symbol ? ctor[symbol] : ctor;
+}
+
+function addMethods(target, methods) {
+
+  Object.keys(methods).forEach(k => {
+
+    let desc = Object.getOwnPropertyDescriptor(methods, k);
+    desc.enumerable = false;
+    Object.defineProperty(target, k, desc);
+  });
+}
+
+function cleanupSubscription(subscription) {
+
+  // Assert:  observer._observer is undefined
+
+  let cleanup = subscription._cleanup;
+
+  if (!cleanup)
+    return;
+
+  // Drop the reference to the cleanup function so that we won't call it
+  // more than once
+  subscription._cleanup = undefined;
+
+  // Call the cleanup function
+  cleanup();
+}
+
+function subscriptionClosed(subscription) {
+
+  return subscription._observer === undefined;
+}
+
+function closeSubscription(subscription) {
+
+  if (subscriptionClosed(subscription))
+    return;
+
+  subscription._observer = undefined;
+  cleanupSubscription(subscription);
+}
+
+function cleanupFromSubscription(subscription) {
+  return _=> { subscription.unsubscribe() };
+}
+
+function Subscription(observer, subscriber) {
+
+  // Assert: subscriber is callable
+
+  // The observer must be an object
+  if (Object(observer) !== observer)
+    throw new TypeError("Observer must be an object");
+
+  this._cleanup = undefined;
+  this._observer = observer;
+
+  let start = getMethod(observer, "start");
+
+  if (start)
+    start.call(observer, this);
+
+  if (subscriptionClosed(this))
+    return;
+
+  observer = new SubscriptionObserver(this);
+
+  try {
+
+    // Call the subscriber function
+    let cleanup = subscriber.call(undefined, observer);
+
+    // The return value must be undefined, null, a subscription object, or a function
+    if (cleanup != null) {
+
+      if (typeof cleanup.unsubscribe === "function")
+        cleanup = cleanupFromSubscription(cleanup);
+      else if (typeof cleanup !== "function")
+        throw new TypeError(cleanup + " is not a function");
+
+      this._cleanup = cleanup;
+    }
+
+  } catch (e) {
+
+    // If an error occurs during startup, then attempt to send the error
+    // to the observer
+    observer.error(e);
+    return;
   }
 
-  forEachObserver(f) {
-    Object.keys(this.observers).forEach((k) => f(this.observers[k]));
-  }
+  // If the stream is already finished, then perform cleanup
+  if (subscriptionClosed(this))
+    cleanupSubscription(this);
+}
 
-  subscribe(observer) {
-    const uid = this.uid++;
-    this.observers[uid] = observer;
-    this.incObservers();
-    return {
-      unsubscribe: () => {
-        delete this.observers[uid];
-        this.decObservers();
-      }
-    };
-  }
+addMethods(Subscription.prototype = {}, {
+  get closed() { return subscriptionClosed(this) },
+  unsubscribe() { closeSubscription(this) },
+});
 
-  forEach(cb) {
+function SubscriptionObserver(subscription) {
+  this._subscription = subscription;
+}
+
+addMethods(SubscriptionObserver.prototype = {}, {
+
+  get closed() { return subscriptionClosed(this._subscription) },
+
+  next(value) {
+
+    let subscription = this._subscription;
+
+    // If the stream if closed, then return undefined
+    if (subscriptionClosed(subscription))
+      return undefined;
+
+    let observer = subscription._observer;
+
+    try {
+
+      let m = getMethod(observer, "next");
+
+      // If the observer doesn't support "next", then return undefined
+      if (!m)
+        return undefined;
+
+      // Send the next value to the sink
+      return m.call(observer, value);
+
+    } catch (e) {
+
+      // If the observer throws, then close the stream and rethrow the error
+      try { closeSubscription(subscription) }
+      finally { throw e }
+    }
+  },
+
+  error(value) {
+
+    let subscription = this._subscription;
+
+    // If the stream is closed, throw the error to the caller
+    if (subscriptionClosed(subscription))
+      throw value;
+
+    let observer = subscription._observer;
+    subscription._observer = undefined;
+
+    try {
+
+      let m = getMethod(observer, "error");
+
+      // If the sink does not support "error", then throw the error to the caller
+      if (!m)
+        throw value;
+
+      value = m.call(observer, value);
+
+    } catch (e) {
+
+      try { cleanupSubscription(subscription) }
+      finally { throw e }
+    }
+
+    cleanupSubscription(subscription);
+    return value;
+  },
+
+  complete(value) {
+
+    let subscription = this._subscription;
+
+    // If the stream is closed, then return undefined
+    if (subscriptionClosed(subscription))
+      return undefined;
+
+    let observer = subscription._observer;
+    subscription._observer = undefined;
+
+    try {
+
+      let m = getMethod(observer, "complete");
+
+      // If the sink does not support "complete", then return undefined
+      value = m ? m.call(observer, value) : undefined;
+
+    } catch (e) {
+
+      try { cleanupSubscription(subscription) }
+      finally { throw e }
+    }
+
+    cleanupSubscription(subscription);
+    return value;
+  },
+
+});
+
+function Observable(subscriber) {
+
+  // The stream subscriber must be a function
+  if (typeof subscriber !== "function")
+    throw new TypeError("Observable initializer must be a function");
+
+  this._subscriber = subscriber;
+}
+
+addMethods(Observable.prototype, {
+
+  subscribe(observer, ...args) {
+
+    if (typeof observer === 'function') {
+
+      observer = {
+        next: observer,
+        error: args[0],
+        complete: args[1],
+      };
+    }
+
+    return new Subscription(observer, this._subscriber);
+  },
+
+  forEach(fn) {
+
     return new Promise((resolve, reject) => {
+
+      if (typeof fn !== "function")
+        return Promise.reject(new TypeError(fn + " is not a function"));
+
       this.subscribe({
-        next: (v) => {
-          try { return cb(v); } catch (e) { reject(e); }
+
+        _subscription: null,
+
+        start(subscription) {
+
+          if (Object(subscription) !== subscription)
+            throw new TypeError(subscription + " is not an object");
+
+          this._subscription = subscription;
         },
+
+        next(value) {
+
+          let subscription = this._subscription;
+
+          if (subscription.closed)
+            return;
+
+          try {
+
+            return fn(value);
+
+          } catch (err) {
+
+            reject(err);
+            subscription.unsubscribe();
+          }
+        },
+
         error: reject,
-        complete: resolve
+        complete: resolve,
       });
+
+    });
+  },
+
+  flatMap(fn) {
+
+    if (typeof fn !== "function")
+      throw new TypeError(fn + " is not a function");
+
+    let C = getSpecies(this.constructor);
+
+    return new C(observer => {
+
+      let completed = false,
+          subscriptions = [];
+
+      // Subscribe to the outer Observable
+      let outer = this.subscribe({
+
+        next(value) {
+
+          if (fn) {
+
+            try {
+
+              value = fn(value);
+
+            } catch (x) {
+
+              observer.error(x);
+              return;
+            }
+          }
+
+          // Subscribe to the inner Observable
+          Observable.from(value).subscribe({
+
+            _subscription: null,
+
+            start(s) { subscriptions.push(this._subscription = s) },
+            next(value) { observer.next(value) },
+            error(e) { observer.error(e) },
+
+            complete() {
+
+              let i = subscriptions.indexOf(this._subscription);
+
+              if (i >= 0)
+                subscriptions.splice(i, 1);
+
+              closeIfDone();
+            }
+          });
+        },
+
+        error(e) {
+
+          return observer.error(e);
+        },
+
+        complete() {
+
+          completed = true;
+          closeIfDone();
+        }
+      });
+
+      function closeIfDone() {
+
+        if (completed && subscriptions.length === 0)
+          observer.complete();
+      }
+
+      return _=> {
+
+        subscriptions.forEach(s => s.unsubscribe());
+        outer.unsubscribe();
+      };
     });
   }
+});
 
-  startSubscription() {
-    if (this.sinkSubscription === null) {
-      this.sinkSubscription = this.subscriber(this.sink);
+Object.defineProperty(Observable.prototype, getSymbol("observable"), {
+  value: function() { return this },
+  writable: true,
+  configurable: true,
+});
+
+addMethods(Observable, {
+
+  from(x) {
+
+    let C = typeof this === "function" ? this : Observable;
+
+    if (x == null)
+      throw new TypeError(x + " is not an object");
+
+    let method = getMethod(x, getSymbol("observable"));
+
+    if (method) {
+
+      let observable = method.call(x);
+
+      if (Object(observable) !== observable)
+        throw new TypeError(observable + " is not an object");
+
+      if (observable.constructor === C)
+        return observable;
+
+      return new C(observer => observable.subscribe(observer));
     }
-  }
 
-  endSubscription() {
-    if (this.sinkSubscription) {
-      this.sinkSubscription.unsubscribe();
-      this.sinkSubscription = null;
+    if (hasSymbol("iterator") && (method = getMethod(x, getSymbol("iterator")))) {
+
+      return new C(observer => {
+
+        for (let item of method.call(x)) {
+
+          observer.next(item);
+
+          if (observer.closed)
+            return;
+        }
+
+        observer.complete();
+      });
     }
-  }
 
-  close() {
-    this.endSubscription();
-    this.complete = true;
-    this.observers = {};
-  }
+    if (Array.isArray(x)) {
 
-  incObservers() {
-    if (this.count == 0) {
-      this.startSubscription();
+      return new C(observer => {
+
+        for (let i = 0; i < x.length; ++i) {
+
+          observer.next(x[i]);
+
+          if (observer.closed)
+            return;
+        }
+
+        observer.complete();
+      });
     }
-    this.count++;
-  }
 
-  decObservers() {
-    this.count--;
-    if (this.count === 0) {
-      this.endSubscription();
-    }
-  }
-}
+    throw new TypeError(x + " is not observable");
+  },
 
-exports.empty = {
-  subscribe(obs) {
-    obs.complete();
-    return {unsubscribe: () => {}};
+  of(...items) {
+
+    let C = typeof this === "function" ? this : Observable;
+
+    return new C(observer => {
+
+      for (let i = 0; i < items.length; ++i) {
+
+        observer.next(items[i]);
+
+        if (observer.closed)
+          return;
+      }
+
+      observer.complete();
+    });
   }
-};
+});
+
+Object.defineProperty(Observable, getSymbol("species"), {
+  get() { return this },
+  configurable: true,
+});
+
+
+
+/// Here follows the PureScript FFI wrappers for ES observables.
+
+exports.empty = new Observable((sink) => {
+  sink.complete();
+});
 
 exports.observable = (subscriber) => () => new Observable((sink) => subscriber({
   next: (v) => () => sink.next(v),
   error: (e) => () => sink.error(e),
-  complete: sink.complete
+  complete: () => sink.complete()
 })());
 
-exports.subscribe = (observer) => (observable) => () => observable.subscribe({
+function wrapSub(sub) {
+  return {unsubscribe: () => sub.unsubscribe()};
+}
+
+exports.subscribe = (observer) => (observable) => () => wrapSub(observable.subscribe({
   next: (v) => observer.next(v)(),
   error: (e) => observer.error(e)(),
-  complete: observer.complete
-});
+  complete: () => observer.complete()
+}));
+
+exports._bind = (observable) => (fn) => observable.flatMap(fn);
