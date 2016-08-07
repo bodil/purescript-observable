@@ -23,9 +23,11 @@ module Control.Observable
   , foldp
   , scan
   , concat
+  , zip
   ) where
 
 import Prelude
+import Data.CatList as Cat
 import Data.Foldable as Foldable
 import Data.List as List
 import Control.Alt (class Alt)
@@ -43,6 +45,7 @@ import Data.Filterable (filterDefault, partitionDefault, class Filterable)
 import Data.Foldable (traverse_, class Foldable)
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
+import Data.Tuple (Tuple(Tuple))
 
 foreign import data OBSERVABLE :: !
 
@@ -273,6 +276,38 @@ concat a b = unsafeObservable \sink -> do
         observe sink.next sink.error sink.complete b >>= Just >>> writeSTRef active
         pure unit
   observe sink.next sink.error nextObs a >>= Just >>> writeSTRef active
+  pure {unsubscribe: unsub}
+
+
+
+-- | Given two `Observable`s, wait until both have yielded values before
+-- | combining them using the provided function and yielding an output value.
+-- |
+-- | Example:
+-- |
+-- |     zip (fromFoldable [1,2,3]) (fromFoldable [4,5,6])
+-- |     -- yields the following: [1,4], [2,5], [3,6], complete.
+zip :: forall a b c. (a -> b -> c) -> Observable a -> Observable b -> Observable c
+zip f o1 o2 = unsafeObservable \sink -> do
+  subs <- newSTRef []
+  active <- newSTRef 2
+  queue <- newSTRef (Tuple Cat.empty Cat.empty)
+  let unsub = readSTRef subs >>= traverse_ \s -> s.unsubscribe
+      next1 v = (modifySTRef queue \(Tuple q1 q2) -> Tuple (Cat.snoc q1 v) q2) >>= push
+      next2 v = (modifySTRef queue \(Tuple q1 q2) -> Tuple q1 (Cat.snoc q2 v)) >>= push
+      push (Tuple q1 q2) = case Cat.uncons q1, Cat.uncons q2 of
+          Nothing, _ -> pure unit
+          _, Nothing -> pure unit
+          Just (Tuple h1 t1), Just (Tuple h2 t2) -> do
+            writeSTRef queue (Tuple t1 t2)
+            sink.next (f h1 h2)
+      done = do
+        c <- modifySTRef active (_ - 1)
+        when (c == 0) (unsub *> sink.complete)
+      error e = unsub *> sink.error e
+  sub1 <- observe next1 error done o1
+  sub2 <- observe next2 error done o2
+  writeSTRef subs [sub1, sub2]
   pure {unsubscribe: unsub}
 
 

@@ -11,7 +11,7 @@ import Control.Monad.Eff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (REF, newRef, readRef, modifyRef)
 import Control.Monad.Error.Class (catchError, throwError)
-import Control.Observable (concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
+import Control.Observable (zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
 import Data.Filterable (partition, filter)
 import Data.Monoid (mempty, class Monoid)
@@ -20,8 +20,8 @@ import Test.Unit.Assert (expectFailure, equal)
 import Test.Unit.Console (TESTOUTPUT)
 import Test.Unit.Main (runTest)
 
-collect :: forall a e m. (Monoid m) => (a -> m) -> Observable a -> Aff (ref :: REF, observable :: OBSERVABLE | e) m
-collect wrap o = makeAff \reject resolve -> do
+collectVals :: forall a e m. (Monoid m) => (a -> m) -> Observable a -> Aff (ref :: REF, observable :: OBSERVABLE | e) m
+collectVals wrap o = makeAff \reject resolve -> do
   coll <- newRef mempty
   let collectOne a = modifyRef coll (flip append (wrap a))
       allDone = readRef coll >>= resolve
@@ -30,7 +30,7 @@ collect wrap o = makeAff \reject resolve -> do
 
 expect :: forall a e. (Eq a, Show a) => Array a -> Observable a -> Test (observable :: OBSERVABLE, ref :: REF | e)
 expect m o = do
-  r <- collect Array.singleton o
+  r <- collectVals Array.singleton o
   equal m r
 
 main :: forall e. Eff (avar :: AVAR, timer :: TIMER, ref :: REF, console :: CONSOLE, testOutput :: TESTOUTPUT, observable :: OBSERVABLE | e) Unit
@@ -102,3 +102,5 @@ main = runTest do
   suite "extras" do
     test "concat" do
       expect [1,2,3,4,5,6] $ concat (fromFoldable [1,2,3]) (fromFoldable [4,5,6])
+    test "zip" do
+      expect [[1,1], [2,2], [3,3]] $ zip (\a b -> [a, b]) (fromFoldable [1,2,3]) (fromFoldable [1,2,3])

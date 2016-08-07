@@ -22,7 +22,8 @@
     "purescript-filterable": "^0.1.1",
     "purescript-transformers": "^1.0.0",
     "purescript-st": "^1.0.0",
-    "purescript-lists": "^1.0.1"
+    "purescript-lists": "^1.0.1",
+    "purescript-catenable-lists": "^1.0.1"
   },
   "devDependencies": {
     "purescript-test-unit": "~8.0.0",
