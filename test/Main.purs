@@ -33,6 +33,12 @@ expect m o = do
   r <- collectVals Array.singleton o
   equal m r
 
+expectEqual :: forall a e. (Eq a, Show a) => Observable a -> Observable a -> Test (observable :: OBSERVABLE, ref :: REF | e)
+expectEqual o1 o2 = do
+  r1 <- collectVals Array.singleton o1
+  r2 <- collectVals Array.singleton o2
+  equal r1 r2
+
 main :: forall e. Eff (avar :: AVAR, timer :: TIMER, ref :: REF, console :: CONSOLE, testOutput :: TESTOUTPUT, observable :: OBSERVABLE | e) Unit
 main = runTest do
 
@@ -46,14 +52,7 @@ main = runTest do
     test "fromFoldable" do
       expect [1,2,3] $ fromFoldable [1,2,3]
 
-  suite "basic type classes" do
-    test "map" do
-      expect [6,7,8] $ (+) 5 <$> fromFoldable [1,2,3]
-    test "apply" do
-      expect [[1,4],[2,4],[2,5],[3,5],[3,6]] $ (\a b -> [a,b]) <$> fromFoldable [1,2,3] <*> fromFoldable [4,5,6]
-    test "bind" do
-      expect [1,1,2,2,3,3] $
-        fromFoldable [1,2,3] >>= \i -> fromFoldable [i,i]
+  suite "Monoid" do
     test "append" do
       expect [1,1,2,2,3,3] $
       fromFoldable [1,2,3] <|> fromFoldable [1,2,3]
@@ -63,6 +62,51 @@ main = runTest do
     test "mempty right" do
       expect [1,2,3] $
         fromFoldable [1,2,3] <|> empty
+
+  suite "Functor" do
+    test "map" do
+      expect [6,7,8] $ (+) 5 <$> fromFoldable [1,2,3]
+    test "identity" do
+      let l = fromFoldable [1,2,3]
+      expectEqual (id <$> l) l
+    test "composition" do
+      let f = \v -> v <> "o"
+          g = \v -> v <> "l"
+          l = fromFoldable ["lol", "wat"]
+      expectEqual (map (f <<< g) l) (((map f) <<< (map g)) l)
+
+  suite "Applicative" do
+    test "apply" do
+      expect [[1,4],[2,4],[2,5],[3,5],[3,6]] $ (\a b -> [a,b]) <$> fromFoldable [1,2,3] <*> fromFoldable [4,5,6]
+    test "identity" do
+      let a = fromFoldable [1,2,3]
+      expectEqual ((pure id) <*> a) a
+    test "homomorphism" do
+      let f = \v -> v + 10
+          x = 20
+      expectEqual ((singleton f) <*> (singleton x)) (singleton (f x))
+    test "associative composition" do
+      let f = fromFoldable [\v -> v + 1, \v -> v * 10]
+          g = fromFoldable [\v -> v + 10, \v -> v * 100]
+          h = fromFoldable [1,2,3]
+      expectEqual ((<<<) <$> f <*> g <*> h) (f <*> (g <*> h))
+
+  suite "Monad" do
+    test "bind" do
+      expect [1,1,2,2,3,3] $
+        fromFoldable [1,2,3] >>= \i -> fromFoldable [i,i]
+    test "associativity" do
+      let f = \i -> fromFoldable [i+5]
+          g = \i -> fromFoldable [i,i]
+          x = fromFoldable [1,2,3]
+      expectEqual ((x >>= f) >>= g) (x >>= (\k -> f k >>= g))
+    test "left identity" do
+      let f = \v -> singleton $ v + 5
+          x = 10
+      expectEqual (singleton x >>= f) (f x)
+    test "right identity" do
+      let x = singleton 10
+      expectEqual (x >>= pure) x
 
   suite "Filterable" do
     test "filter" do
@@ -89,7 +133,7 @@ main = runTest do
       o <- liftEff $ unwrap $ fromFoldable [pure 1, pure 2, pure 3]
       expect [1,2,3] o
 
-  suite "folds" do
+  suite "Foldable" do
     test "fold" do
       expect ["hello world"] $ fold $ fromFoldable ["hell", "o ", "world"]
     test "foldl" do
