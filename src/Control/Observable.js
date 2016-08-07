@@ -505,10 +505,6 @@ Object.defineProperty(Observable, getSymbol("species"), {
 
 /// Here follows the PureScript FFI wrappers for ES observables.
 
-exports.empty = new Observable(function (sink) {
-  sink.complete();
-});
-
 exports.observable = function (subscriber) {
   return function () {
     return new Observable(function (sink) {
