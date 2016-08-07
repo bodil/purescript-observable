@@ -1,5 +1,27 @@
 // module Control.Observable
 
+const scheduler = {
+  queue: [],
+  scheduled: false,
+  next: typeof global !== "undefined" && typeof process !== "undefined" ? global.setImmediate || process.nextTick : (f) => setTimeout(f, 0)
+};
+
+function runScheduler() {
+  const queue = scheduler.queue;
+  scheduler.queue = [];
+  scheduler.scheduled = false;
+  queue.forEach((f) => f());
+}
+
+function schedule(f) {
+  scheduler.queue.push(f);
+  if (!scheduler.scheduled) {
+    scheduler.scheduled = true;
+    scheduler.next(runScheduler);
+  }
+}
+exports.schedule = (f) => () => schedule(f);
+
 /// Here follows an inline embedding of the zen-observable package,
 /// which is Copyright (c) 2015 zenparsing (Kevin Smith) and licensed
 /// under the MIT licence.

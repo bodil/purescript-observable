@@ -43,6 +43,7 @@ import Control.Plus (class Plus)
 import Data.Either (either, Either)
 import Data.Filterable (filterDefault, partitionDefault, class Filterable)
 import Data.Foldable (traverse_, class Foldable)
+import Data.List (List(Cons, Nil))
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
 import Data.Tuple (Tuple(Tuple))
@@ -50,6 +51,9 @@ import Data.Tuple (Tuple(Tuple))
 foreign import data OBSERVABLE :: !
 
 type EffO e a = Eff (observable :: OBSERVABLE | e) a
+
+foreign import schedule :: forall e. EffO e Unit -> EffO e Unit
+foreign import _bind :: forall a b. Observable a -> (a -> Observable b) -> Observable b
 
 -- | An `Observable` represents a finite stream of asynchronous values.
 -- | You can attach `Observer`s to it to react to events such as new values,
@@ -147,20 +151,24 @@ empty = unsafeObservable \sink -> do
 never :: forall a. Observable a
 never = unsafeObservable \sink -> noUnsub
 
--- | Make an observable which only yields the provided value, then immediately
--- | closes.
+-- | Make an observable which only yields the provided value on the next tick,
+-- | then immediately closes.
 singleton :: forall a. a -> Observable a
 singleton v = unsafeObservable \sink -> do
-  sink.next v
-  sink.complete
+  schedule do
+    sink.next v
+    sink.complete
   noUnsub
 
 -- | Convert any `Foldable` into an observable. It will yield each value from
--- | the `Foldable` immediately, then complete.
+-- | the `Foldable` in order every tick until it's empty, then complete.
 fromFoldable :: forall f. Foldable f => f ~> Observable
 fromFoldable f = unsafeObservable \sink -> do
-  traverse_ (sink.next) f
-  sink.complete
+  let run Nil = schedule sink.complete
+      run (Cons h t) = schedule do
+        sink.next h
+        run t
+  run (List.fromFoldable f)
   noUnsub
 
 -- | Convert an `Observable` of effects producing values into an effect
@@ -309,10 +317,6 @@ zip f o1 o2 = unsafeObservable \sink -> do
   sub2 <- observe next2 error done o2
   writeSTRef subs [sub1, sub2]
   pure {unsubscribe: unsub}
-
-
-
-foreign import _bind :: forall a b. Observable a -> (a -> Observable b) -> Observable b
 
 
 
