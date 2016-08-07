@@ -49,11 +49,13 @@ main = runTest do
   suite "basic type classes" do
     test "map" do
       expect [6,7,8] $ (+) 5 <$> fromFoldable [1,2,3]
+    test "apply" do
+      expect [[1,4],[2,4],[2,5],[3,5],[3,6]] $ (\a b -> [a,b]) <$> fromFoldable [1,2,3] <*> fromFoldable [4,5,6]
     test "bind" do
       expect [1,1,2,2,3,3] $
         fromFoldable [1,2,3] >>= \i -> fromFoldable [i,i]
     test "append" do
-      expect [1,2,3,1,2,3] $
+      expect [1,1,2,2,3,3] $
       fromFoldable [1,2,3] <|> fromFoldable [1,2,3]
     test "mempty left" do
       expect [1,2,3] $

@@ -328,7 +328,22 @@ instance bindObservable :: Bind Observable where
   bind = _bind
 
 instance applyObservable :: Apply Observable where
-  apply = ap
+  apply f o = unsafeObservable \sink -> do
+    fun <- newSTRef Nothing
+    val <- newSTRef Nothing
+    active <- newSTRef 2
+    let nextFun f = do
+          writeSTRef fun (Just f)
+          readSTRef val >>= maybe (pure unit) (f >>> sink.next)
+    let nextVal v = do
+          writeSTRef val (Just v)
+          readSTRef fun >>= maybe (pure unit) (\f -> sink.next (f v))
+    let done = do
+          c <- modifySTRef active (_ - 1)
+          when (c == 0) sink.complete
+    funsub <- observe nextFun sink.error done f
+    valsub <- observe nextVal sink.error done o
+    unsub2 funsub valsub
 
 instance applicativeObservable :: Applicative Observable where
   pure = singleton
