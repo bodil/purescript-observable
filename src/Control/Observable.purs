@@ -167,7 +167,7 @@ fromFoldable f = unsafeObservable \sink -> do
 -- | producing an `Observable` of the produced values.
 unwrap :: forall a e. Observable (EffO e a) -> EffO e (Observable a)
 unwrap o = observable \sink -> do
-  sub <- observe ((=<<) sink.next) sink.error sink.complete o
+  sub <- observe (_ >>= sink.next) sink.error sink.complete o
   unsub1 sub
 
 
