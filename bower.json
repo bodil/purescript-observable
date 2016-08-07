@@ -25,7 +25,7 @@
     "purescript-lists": "^1.0.1"
   },
   "devDependencies": {
-    "purescript-test-unit": "~7.0.0",
+    "purescript-test-unit": "~8.0.0",
     "purescript-refs": "~1.0.0"
   }
 }
