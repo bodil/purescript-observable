@@ -25,6 +25,7 @@ module Control.Observable
   , take
   , takeWhile
   , takeUntil
+  , distinct
   ) where
 
 import Prelude
@@ -332,6 +333,25 @@ takeUntil b a = unsafeObservable \sink -> do
   sub1 <- observe sink.next sink.error sink.complete a
   sub2 <- observe (const sink.complete) sink.error sink.complete b
   free [sub1, sub2]
+
+
+
+-- | Only yield values from the source `Observable` if they're not
+-- | the same as the previous value.
+-- |
+-- | Example:
+-- |
+-- |     distinct (fromFoldable [1,2,2,3,3,3])
+-- |     -- yields: 1, 2, 3, complete.
+distinct :: forall a. (Eq a) => Observable a -> Observable a
+distinct o = unsafeObservable \sink -> do
+  last <- newSTRef Nothing
+  let next v = do
+        lastV <- readSTRef last
+        writeSTRef last (Just v)
+        when ((Just v) /= lastV) $ sink.next v
+  sub <- observe next sink.error sink.complete o
+  free [sub]
 
 
 
