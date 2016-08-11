@@ -47,6 +47,7 @@ import Data.List (List(Cons, Nil))
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
 import Data.Tuple (Tuple(Tuple))
+import Data.Unfoldable (unfoldr, class Unfoldable)
 
 foreign import data OBSERVABLE :: !
 
@@ -389,3 +390,13 @@ instance semigroupObservable :: Semigroup (Observable a) where
 
 instance monoidObservable :: Monoid (Observable a) where
   mempty = empty
+
+instance unfoldableObservable :: Unfoldable Observable where
+  unfoldr f s = unsafeObservable \sink -> do
+    let run b = case f b of
+          Nothing -> schedule sink.complete
+          Just (Tuple a b1) -> schedule do
+            sink.next a
+            run b1
+    run s
+    noUnsub

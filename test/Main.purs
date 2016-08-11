@@ -14,7 +14,10 @@ import Control.Monad.Error.Class (catchError, throwError)
 import Control.Observable (zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
 import Data.Filterable (partition, filter)
+import Data.Maybe (Maybe(Just, Nothing))
 import Data.Monoid (mempty, class Monoid)
+import Data.Tuple (Tuple(Tuple))
+import Data.Unfoldable (unfoldr)
 import Test.Unit (TIMER, timeout, suite, test, Test)
 import Test.Unit.Assert (expectFailure, equal)
 import Test.Unit.Console (TESTOUTPUT)
@@ -144,6 +147,13 @@ main = runTest do
         fromFoldable ["hell", "o ", "world"]
     test "foldp" do
       expect [1,3,6] $ foldp (\acc next -> acc + next) 0 $ fromFoldable [1,2,3]
+
+  suite "Unfoldable" do
+    test "unfoldr" do
+      let f l = case Array.uncons l of
+            Nothing -> Nothing
+            Just {head, tail} -> Just (Tuple head tail)
+      expect [1,2,3] $ unfoldr f [1,2,3]
 
   suite "extras" do
     test "concat" do
