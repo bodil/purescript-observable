@@ -8,9 +8,7 @@ module Control.Observable
   , observable
   , subscribe
   , observe
-  , noUnsub
-  , unsub1
-  , unsub2
+  , free
   , empty
   , never
   , singleton
@@ -42,12 +40,12 @@ import Control.MonadZero (class MonadZero)
 import Control.Plus (class Plus)
 import Data.Either (either, Either)
 import Data.Filterable (filterDefault, partitionDefault, class Filterable)
-import Data.Foldable (traverse_, class Foldable)
+import Data.Foldable (for_, traverse_, class Foldable)
 import Data.List (List(Cons, Nil))
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
 import Data.Tuple (Tuple(Tuple))
-import Data.Unfoldable (unfoldr, class Unfoldable)
+import Data.Unfoldable (class Unfoldable)
 
 foreign import data OBSERVABLE :: !
 
@@ -104,41 +102,23 @@ unsafeObservable = observable >>> unsafePerformEff
 
 
 
--- | If your observable doesn't need to free any resources on unsubscribe,
--- | just call `noUnsub` at the end of your subscriber function. It will return
--- | a subscription with a no-op unsubscribe function.
+-- | Create and return a `Subscription` which will unsubscribe from
+-- | the list of `Subscription`s you provide when its `unsubscribe`
+-- | method is called.
 -- |
--- | Example:
+-- | Use this to easily finish up your subscriber functions.
+-- |
+-- | Examples:
 -- |
 -- |     -- this is how the `never` function is implemented:
--- |     subscriberFn sink = noUnsub
-noUnsub :: forall e. EffO e (Subscription e)
-noUnsub = pure {unsubscribe: pure unit}
-
--- | If the only resource your subscriber function allocates is a subscription
--- | to another `Observable`, this function will return a `Subscription` which
--- | unsubscribes from that `Observable` for you.
--- |
--- | Example:
+-- |     subscriberFn sink = free []
 -- |
 -- |     subscriberFn sink = do
 -- |       sub <- subscribe next error complete inputObs
--- |       unsub1 sub
-unsub1 :: forall e. Subscription e -> EffO e (Subscription e)
-unsub1 sub = pure {unsubscribe: sub.unsubscribe}
-
--- | If your subscriber function sets up two subscriptions to other
--- | `Observable`s, this function will return a `Subscription` which
--- | unsubscribes from both `Observable`s for you.
--- |
--- | Example:
--- |
--- |     subscriberFn sink = do
--- |       sub1 <- subscribe next error complete inputObs1
--- |       sub2 <- subscribe next error complete inputObs2
--- |       unsub2 sub1 sub2
-unsub2 :: forall e. Subscription e -> Subscription e -> EffO e (Subscription e)
-unsub2 sub1 sub2 = pure {unsubscribe: sub1.unsubscribe *> sub2.unsubscribe}
+-- |       unsub [sub]
+free :: forall e. Array (Subscription e) -> EffO e (Subscription e)
+free [] = pure {unsubscribe: pure unit}
+free subs = pure {unsubscribe: for_ subs _.unsubscribe}
 
 
 
@@ -146,11 +126,11 @@ unsub2 sub1 sub2 = pure {unsubscribe: sub1.unsubscribe *> sub2.unsubscribe}
 empty :: forall a. Observable a
 empty = unsafeObservable \sink -> do
   sink.complete
-  noUnsub
+  free []
 
 -- | An observable which never yields any values and never completes.
 never :: forall a. Observable a
-never = unsafeObservable \sink -> noUnsub
+never = unsafeObservable \sink -> free []
 
 -- | Make an observable which only yields the provided value on the next tick,
 -- | then immediately closes.
@@ -159,7 +139,7 @@ singleton v = unsafeObservable \sink -> do
   schedule do
     sink.next v
     sink.complete
-  noUnsub
+  free []
 
 -- | Convert any `Foldable` into an observable. It will yield each value from
 -- | the `Foldable` in order every tick until it's empty, then complete.
@@ -170,14 +150,14 @@ fromFoldable f = unsafeObservable \sink -> do
         sink.next h
         run t
   run (List.fromFoldable f)
-  noUnsub
+  free []
 
 -- | Convert an `Observable` of effects producing values into an effect
 -- | producing an `Observable` of the produced values.
 unwrap :: forall a e. Observable (EffO e a) -> EffO e (Observable a)
 unwrap o = observable \sink -> do
   sub <- observe (_ >>= sink.next) sink.error sink.complete o
-  unsub1 sub
+  free [sub]
 
 
 
@@ -197,13 +177,13 @@ merge o1 o2 = unsafeObservable \sink -> do
   sub1 <- observe sink.next error done o1
   sub2 <- observe sink.next error done o2
   writeSTRef subs [sub1, sub2]
-  unsub2 sub1 sub2
+  free [sub1, sub2]
 
 filterMap :: forall a b. (a -> Maybe b) -> Observable a -> Observable b
 filterMap f o = unsafeObservable \sink -> do
   let yield = f >>> maybe (pure unit) sink.next
   sub <- observe yield sink.error sink.complete o
-  unsub1 sub
+  free [sub]
 
 partitionMap :: forall a l r. (a -> Either l r) -> Observable a -> { left :: Observable l, right :: Observable r }
 partitionMap f o =
@@ -241,7 +221,7 @@ foldl f i o = unsafePerformEff $ runST do
           readSTRef acc >>= sink.next
           sink.complete
     sub <- observe next sink.error done o
-    unsub1 sub
+    free [sub]
 
 -- | Perform a right fold over an `Observable`, yielding the result
 -- | once the input `Observable` completes.
@@ -266,7 +246,7 @@ foldp f i o = unsafePerformEff $ runST do
   observable \sink -> do
     let next v = modifySTRef ref (flip f v) >>= sink.next
     sub <- observe next sink.error sink.complete o
-    unsub1 sub
+    free [sub]
 
 -- | An alias for `foldp` to make RxJS users feel at home.
 scan :: forall a b. (b -> a -> b) -> b -> Observable a -> Observable b
@@ -322,8 +302,9 @@ zip f o1 o2 = unsafeObservable \sink -> do
 
 
 instance functorObservable :: Functor Observable where
-  map f o = unsafeObservable \sink ->
-    observe (\v -> sink.next (f v)) sink.error sink.complete o >>= unsub1
+  map f o = unsafeObservable \sink -> do
+    sub <- observe (\v -> sink.next (f v)) sink.error sink.complete o
+    free [sub]
 
 instance bindObservable :: Bind Observable where
   bind = _bind
@@ -344,7 +325,7 @@ instance applyObservable :: Apply Observable where
           when (c == 0) sink.complete
     funsub <- observe nextFun sink.error done f
     valsub <- observe nextVal sink.error done o
-    unsub2 funsub valsub
+    free [funsub, valsub]
 
 instance applicativeObservable :: Applicative Observable where
   pure = singleton
@@ -370,7 +351,7 @@ instance filterableObservable :: Filterable Observable where
   filter f o = filterDefault f o
 
 instance monadErrorObservable :: MonadError Error Observable where
-  throwError e = unsafeObservable \sink -> sink.error e *> noUnsub
+  throwError e = unsafeObservable \sink -> sink.error e *> free []
 
   catchError o f = unsafeObservable \sink -> do
     subs <- newSTRef []
@@ -399,4 +380,4 @@ instance unfoldableObservable :: Unfoldable Observable where
             sink.next a
             run b1
     run s
-    noUnsub
+    free []
