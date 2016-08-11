@@ -22,6 +22,9 @@ module Control.Observable
   , scan
   , concat
   , zip
+  , take
+  , takeWhile
+  , takeUntil
   ) where
 
 import Prelude
@@ -298,6 +301,37 @@ zip f o1 o2 = unsafeObservable \sink -> do
   sub2 <- observe next2 error done o2
   writeSTRef subs [sub1, sub2]
   pure {unsubscribe: unsub}
+
+
+
+-- | Take only the first `n` values from the source `Observable`.
+take :: forall a. Int -> Observable a -> Observable a
+take 0 _ = empty
+take n o = unsafeObservable \sink -> do
+  count <- newSTRef 0
+  let next v = do
+        c <- modifySTRef count (_ + 1)
+        sink.next v
+        when (c >= n) sink.complete
+  sub <- observe next sink.error sink.complete o
+  free [sub]
+
+-- | Pass through values from the source `Observable` only as long as
+-- | a predicate holds `true`.
+-- |
+-- | Unlike `filter`, the output `Observable` will actually complete the
+-- | first time the predicate function returns `false`.
+takeWhile :: forall a. (a -> Boolean) -> Observable a -> Observable a
+takeWhile pred o = unsafeObservable \sink -> do
+  let next v = if pred v then sink.next v else sink.complete
+  sub <- observe next sink.error sink.complete o
+  free [sub]
+
+takeUntil :: forall a b. Observable b -> Observable a -> Observable a
+takeUntil b a = unsafeObservable \sink -> do
+  sub1 <- observe sink.next sink.error sink.complete a
+  sub2 <- observe (const sink.complete) sink.error sink.complete b
+  free [sub1, sub2]
 
 
 

@@ -11,8 +11,9 @@ import Control.Monad.Eff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (REF, newRef, readRef, modifyRef)
 import Control.Monad.Error.Class (catchError, throwError)
-import Control.Observable (zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
+import Control.Observable (takeUntil, takeWhile, take, zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
+import Data.Array ((..))
 import Data.Filterable (partition, filter)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Monoid (mempty, class Monoid)
@@ -159,4 +160,12 @@ main = runTest do
     test "concat" do
       expect [1,2,3,4,5,6] $ concat (fromFoldable [1,2,3]) (fromFoldable [4,5,6])
     test "zip" do
-      expect [[1,1], [2,2], [3,3]] $ zip (\a b -> [a, b]) (fromFoldable [1,2,3]) (fromFoldable [1,2,3])
+      expect [[1,1], [2,2], [3,3]] $ zip (\a b -> [a, b]) (fromFoldable (1..5)) (fromFoldable (1..3))
+    test "take" do
+      expect [1,2,3] $ take 3 (fromFoldable (1..10))
+    test "takeWhile" do
+      expect [1,2,3] $ takeWhile (_ < 4) (fromFoldable (1..10))
+    test "takeUntil" do
+      expect [1] $ takeUntil (fromFoldable (1..3)) (fromFoldable (1..3))
+      expect [] $ takeUntil empty (fromFoldable (1..3))
+      expect [1,2,3] $ takeUntil never (fromFoldable (1..3))
