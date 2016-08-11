@@ -11,7 +11,7 @@ import Control.Monad.Eff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (REF, newRef, readRef, modifyRef)
 import Control.Monad.Error.Class (catchError, throwError)
-import Control.Observable (distinct, takeUntil, takeWhile, take, zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
+import Control.Observable (dropUntil, dropWhile, drop, distinct, takeUntil, takeWhile, take, zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
 import Data.Array ((..))
 import Data.Filterable (partition, filter)
@@ -169,5 +169,12 @@ main = runTest do
       expect [1] $ takeUntil (fromFoldable (1..3)) (fromFoldable (1..3))
       expect [] $ takeUntil empty (fromFoldable (1..3))
       expect [1,2,3] $ takeUntil never (fromFoldable (1..3))
+    test "drop" do
+      expect [4,5,6] $ drop 3 (fromFoldable (1..6))
+    test "dropWhile" do
+      expect [4,5,6] $ dropWhile (_ < 4) (fromFoldable (1..6))
+    test "dropUntil" do
+      expect [2,3] $ dropUntil (fromFoldable (1..3)) (fromFoldable (1..3))
+      expect [] $ dropUntil never (fromFoldable (1..3))
     test "distinct" do
       expect [1,2,3] $ distinct (fromFoldable [1,1,1,1,2,3,3,3,3,3])

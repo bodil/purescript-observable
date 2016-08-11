@@ -25,6 +25,9 @@ module Control.Observable
   , take
   , takeWhile
   , takeUntil
+  , drop
+  , dropWhile
+  , dropUntil
   , distinct
   ) where
 
@@ -46,7 +49,7 @@ import Data.Either (either, Either)
 import Data.Filterable (filterDefault, partitionDefault, class Filterable)
 import Data.Foldable (for_, traverse_, class Foldable)
 import Data.List (List(Cons, Nil))
-import Data.Maybe (maybe, Maybe(Nothing, Just))
+import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just))
 import Data.Monoid (mempty, class Monoid)
 import Data.Tuple (Tuple(Tuple))
 import Data.Unfoldable (class Unfoldable)
@@ -328,11 +331,60 @@ takeWhile pred o = unsafeObservable \sink -> do
   sub <- observe next sink.error sink.complete o
   free [sub]
 
+-- | Pass through values from the source `Observable` only until
+-- | the other `Observable` starts yielding values or completes,
+-- | then complete as soon as that happens.
 takeUntil :: forall a b. Observable b -> Observable a -> Observable a
 takeUntil b a = unsafeObservable \sink -> do
   sub1 <- observe sink.next sink.error sink.complete a
   sub2 <- observe (const sink.complete) sink.error sink.complete b
   free [sub1, sub2]
+
+
+
+-- | Drop the first `n` values from the source `Observable`.
+drop :: forall a. Int -> Observable a -> Observable a
+drop 0 _ = empty
+drop n o = unsafeObservable \sink -> do
+  count <- newSTRef 0
+  let next v = do
+        c <- modifySTRef count (_ + 1)
+        when (c > n) $ sink.next v
+  sub <- observe next sink.error sink.complete o
+  free [sub]
+
+-- | Don't pass through values from the source `Observable` while a given
+-- | predicate holds true.
+dropWhile :: forall a. (a -> Boolean) -> Observable a -> Observable a
+dropWhile pred o = unsafeObservable \sink -> do
+  ready <- newSTRef false
+  let next v = do
+        reading <- readSTRef ready
+        if reading then sink.next v else unless (pred v) do
+          writeSTRef ready true
+          sink.next v
+  sub <- observe next sink.error sink.complete o
+  free [sub]
+
+-- | Wait until one `Observable` yields a value (which is ignored),
+-- | or until it completes, before passing through values from the
+-- | other `Observable`.
+dropUntil :: forall a b. Observable b -> Observable a -> Observable a
+dropUntil b a = unsafeObservable \sink -> do
+  source <- newSTRef Nothing
+  trigger <- newSTRef Nothing
+  let unsubscribe = do
+        readSTRef trigger >>= maybe (pure unit) (_.unsubscribe)
+        readSTRef source >>= maybe (pure unit) (_.unsubscribe)
+      ready = do
+        readSTRef trigger >>= maybe (pure unit) (_.unsubscribe)
+        void $ writeSTRef trigger Nothing
+      next v = do
+        readyState <- isNothing <$> readSTRef trigger
+        when readyState $ sink.next v
+  observe next sink.error sink.complete a >>= Just >>> writeSTRef source
+  observe (const ready) sink.error ready b >>= Just >>> writeSTRef trigger
+  pure {unsubscribe}
 
 
 
