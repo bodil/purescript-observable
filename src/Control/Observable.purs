@@ -29,6 +29,7 @@ module Control.Observable
   , dropWhile
   , dropUntil
   , distinct
+  , sampleOn
   ) where
 
 import Prelude
@@ -404,6 +405,19 @@ distinct o = unsafeObservable \sink -> do
         when ((Just v) /= lastV) $ sink.next v
   sub <- observe next sink.error sink.complete o
   free [sub]
+
+
+
+-- | Every time the first `Observable` yields a value, yield instead
+-- | the last value that was yielded by the second `Observable`.
+sampleOn :: forall a b. Observable b -> Observable a -> Observable a
+sampleOn trigger source = unsafeObservable \sink -> do
+  last <- newSTRef Nothing
+  let nextSource v = void $ writeSTRef last (Just v)
+      yield = readSTRef last >>= maybe (pure unit) sink.next
+  sub1 <- observe nextSource sink.error sink.complete source
+  sub2 <- observe (const yield) sink.error sink.complete trigger
+  free [sub1, sub2]
 
 
 
