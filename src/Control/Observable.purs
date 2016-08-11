@@ -30,6 +30,7 @@ module Control.Observable
   , dropUntil
   , distinct
   , sampleOn
+  , bufferOn
   ) where
 
 import Prelude
@@ -415,6 +416,22 @@ sampleOn trigger source = unsafeObservable \sink -> do
   last <- newSTRef Nothing
   let nextSource v = void $ writeSTRef last (Just v)
       yield = readSTRef last >>= maybe (pure unit) sink.next
+  sub1 <- observe nextSource sink.error sink.complete source
+  sub2 <- observe (const yield) sink.error sink.complete trigger
+  free [sub1, sub2]
+
+
+
+-- | Every time the first `Observable` yields, yield a `CatList` of
+-- | values that have been yielded by the second `Observable` since the
+-- | last time the first one yielded.
+bufferOn :: forall a b. Observable b -> Observable a -> Observable (Cat.CatList a)
+bufferOn trigger source = unsafeObservable \sink -> do
+  buf <- newSTRef Cat.empty
+  let nextSource v = void $ modifySTRef buf (flip Cat.snoc v)
+      yield = do
+        readSTRef buf >>= sink.next
+        void $ writeSTRef buf Cat.empty
   sub1 <- observe nextSource sink.error sink.complete source
   sub2 <- observe (const yield) sink.error sink.complete trigger
   free [sub1, sub2]
