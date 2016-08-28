@@ -22,6 +22,9 @@ module Control.Observable
   , scan
   , concat
   , zip
+  , zip3
+  , zip4
+  , zip5
   , take
   , takeWhile
   , takeUntil
@@ -307,6 +310,18 @@ zip f o1 o2 = unsafeObservable \sink -> do
   sub2 <- observe next2 error done o2
   writeSTRef subs [sub1, sub2]
   pure {unsubscribe: unsub}
+
+-- | Like `zip`, except with three source `Observable`s.
+zip3 :: forall a b c d. (a -> b -> c -> d) -> Observable a -> Observable b -> Observable c -> Observable d
+zip3 f a b c = zip (\f c -> f c) (zip (\a b -> \c -> f a b c) a b) c
+
+-- | Like `zip`, except with four source `Observable`s.
+zip4 :: forall a b c d e. (a -> b -> c -> d -> e) -> Observable a -> Observable b -> Observable c -> Observable d -> Observable e
+zip4 f a b c d = zip (\f d -> f d) (zip3 (\a b c -> \d -> f a b c d) a b c) d
+
+-- | Like `zip`, except with five source `Observable`s.
+zip5 :: forall a b c d e f. (a -> b -> c -> d -> e -> f) -> Observable a -> Observable b -> Observable c -> Observable d -> Observable e -> Observable f
+zip5 f a b c d e = zip (\f e -> f e) (zip4 (\a b c d -> \e -> f a b c d e) a b c d) e
 
 
 

@@ -12,7 +12,7 @@ import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Eff.Ref (REF, newRef, readRef, modifyRef)
 import Control.Monad.Eff.Timer (TIMER)
 import Control.Monad.Error.Class (catchError, throwError)
-import Control.Observable (dropUntil, dropWhile, drop, distinct, takeUntil, takeWhile, take, zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
+import Control.Observable (zip5, zip4, zip3, dropUntil, dropWhile, drop, distinct, takeUntil, takeWhile, take, zip, concat, foldp, foldr, foldl, fold, unwrap, never, singleton, Observable, OBSERVABLE, observe, fromFoldable)
 import Control.Plus (empty)
 import Data.Array ((..))
 import Data.Filterable (partition, filter)
@@ -162,6 +162,12 @@ main = runTest do
       expect [1,2,3,4,5,6] $ concat (fromFoldable [1,2,3]) (fromFoldable [4,5,6])
     test "zip" do
       expect [[1,1], [2,2], [3,3]] $ zip (\a b -> [a, b]) (fromFoldable (1..5)) (fromFoldable (1..3))
+    test "zip3" do
+      expect [[1,1,1], [2,2,2], [3,3,3]] $ zip3 (\a b c -> [a, b, c]) (fromFoldable (1..5)) (fromFoldable (1..3)) (fromFoldable (1..6))
+    test "zip4" do
+      expect [[1,1,1,1], [2,2,2,2], [3,3,3,3]] $ zip4 (\a b c d -> [a, b, c, d]) (fromFoldable (1..5)) (fromFoldable (1..3)) (fromFoldable (1..6)) (fromFoldable (1..6))
+    test "zip5" do
+      expect [[1,1,1,1,1], [2,2,2,2,2], [3,3,3,3,3]] $ zip5 (\a b c d e -> [a, b, c, d, e]) (fromFoldable (1..5)) (fromFoldable (1..3)) (fromFoldable (1..6)) (fromFoldable (1..6)) (fromFoldable (1..6))
     test "take" do
       expect [1,2,3] $ take 3 (fromFoldable (1..10))
     test "takeWhile" do
