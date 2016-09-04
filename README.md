@@ -35,7 +35,7 @@ module Main where
 import Prelude
 import Control.Monad.Eff.Console (log)
 import Control.Monad.Eff.Exception (message)
-import Control.Observable (noUnsub, observable, subscribe)
+import Control.Observable (observable, subscribe, free)
 
 main = do
   o <- observable \sink -> do
@@ -43,7 +43,7 @@ main = do
     sink.next "Hello Mike"
     sink.next "Hello Robert"
     sink.complete
-    noUnsub
+    free []
 
   -- `observe` is a shorthand for `subscribe`
   observe log (message >>> log) (pure unit) o
