@@ -586,3 +586,13 @@ exports._bind = function (observable) {
     return observable.flatMap(fn);
   };
 };
+
+exports.bindEffO = function (observable) {
+  return function (effFn) {
+    return function () {
+      return observable.flatMap(function (x) {
+        return effFn(x)();
+      });
+    }
+  };
+};

@@ -34,6 +34,7 @@ module Control.Observable
   , distinct
   , sampleOn
   , bufferOn
+  , bindEffO
   ) where
 
 import Prelude
@@ -65,6 +66,7 @@ type EffO e a = Eff (observable :: OBSERVABLE | e) a
 
 foreign import schedule :: forall e. EffO e Unit -> EffO e Unit
 foreign import _bind :: forall a b. Observable a -> (a -> Observable b) -> Observable b
+foreign import bindEffO :: forall e a b. Observable a -> (a -> EffO e (Observable b)) -> EffO e (Observable b)
 
 -- | An `Observable` represents a finite stream of asynchronous values.
 -- | You can attach `Observer`s to it to react to events such as new values,
