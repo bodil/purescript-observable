@@ -14,7 +14,7 @@
   ],
   "dependencies": {
     "purescript-exceptions": "~2.0.0",
-    "purescript-prelude": "~2.1.0",
+    "purescript-prelude": "~2.5.0",
     "purescript-foldable-traversable": "^2.0.0",
     "purescript-monoid": "^2.0.0",
     "purescript-control": "^2.0.0",
@@ -27,7 +27,7 @@
     "purescript-unfoldable": "^2.0.0"
   },
   "devDependencies": {
-    "purescript-test-unit": "~10.0.0",
+    "purescript-test-unit": "~10.1.0",
     "purescript-refs": "~2.0.0"
   }
 }
